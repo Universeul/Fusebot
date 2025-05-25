@@ -10,7 +10,7 @@ app.use(bodyParser.json());
 
 const token = process.env.WHATSAPP_TOKEN;
 const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const verifyToken = process.env.META_VERIFY_TOKEN;
+const verifyToken = process.env.VERIFY_TOKEN;
 
 const sessions = {}; // Temporary session store in memory
 
