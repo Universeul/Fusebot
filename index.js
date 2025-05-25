@@ -12,8 +12,25 @@ const token = process.env.WHATSAPP_TOKEN;
 const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const verifyToken = process.env.VERIFY_TOKEN;
 
-// In-memory store for user progress (for demo purposes only)
 const userState = {};
+const userData = {};
+
+const sendWhatsAppMessage = async (to, message) => {
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      to,
+      text: { body: message },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+};
 
 app.post('/webhook', async (req, res) => {
   const entry = req.body.entry?.[0];
@@ -24,76 +41,63 @@ app.post('/webhook', async (req, res) => {
     const from = message.from;
     const userText = message.text?.body?.trim();
 
-    // Initialize user state
     if (!userState[from]) {
-      userState[from] = { step: 0 };
+      userState[from] = 'ask_email';
+      userData[from] = {};
+
+      await sendWhatsAppMessage(from, `Hi! I’m Fusebot — Fuse Energy’s official WhatsApp onboarding assistant 💡🔌\nI’ll guide you step by step to get your switch started. This will only take a minute!\n\nTo begin, what’s your email address?`);
+      return res.sendStatus(200);
     }
 
     const state = userState[from];
-    let reply = '';
 
-    switch (state.step) {
-      case 0:
-        reply = "Hi! I’m Fusebot — Fuse Energy’s official WhatsApp onboarding assistant 💡🔌\nI’ll guide you step by step to get your switch started. This will only take a minute!\n\nTo begin, what’s your email address?";
-        state.step++;
-        break;
+    if (state === 'ask_email') {
+      userData[from].email = userText;
+      userState[from] = 'ask_supply';
 
-      case 1:
-        state.email = userText;
-        reply = "Great! Now please provide your supply number or full address.\n\nYour supply number is a 13-digit number that usually appears on your bill or meter certificate like this:\nS 1 801 902 **1200051437974**";
-        state.step++;
-        break;
+      await sendWhatsAppMessage(from, "Great! Now please provide your supply number or full address.");
 
-      case 2:
-        state.addressOrSupply = userText;
-        // TODO: Validate using Royal Mail or ECOES API
-        reply = "Thanks! What’s your desired switch date (in DD/MM/YYYY format)?";
-        state.step++;
-        break;
+      setTimeout(async () => {
+        await sendWhatsAppMessage(from, `\
+\`\`\`
+Your supply number is a 13-digit number found on your bill or meter certificate.
+It’s usually displayed like this:
 
-      case 3:
-        state.switchDate = userText;
-        reply = "Thanks. Now let me show you our latest tariffs...";
+  Supply number
+  ┌──┬────┬────┐
+  │S │801 │902 │
+  └──┴────┴────┘
+         1200051437974
+\`\`\``);
+      }, 1500);
 
-        try {
-          const postcode = extractPostcode(state.addressOrSupply);
-          const tariffs = await getTariffsFromFuse(postcode);
-          reply += `\n\nAvailable tariffs:\n`;
-          tariffs.forEach((t, i) => {
-            reply += `\n${i + 1}. ${t.name} - ${t.rate}`;
-          });
-          reply += "\n\nPlease reply with the number of your preferred tariff.";
-          state.tariffs = tariffs;
-          state.step++;
-        } catch (error) {
-          reply += "\n(Sorry, I couldn’t retrieve tariffs for that postcode.)";
-        }
-        break;
+      setTimeout(async () => {
+        await sendWhatsAppMessage(from, "Thanks! What’s your desired switch date (in DD/MM/YYYY format)?");
+      }, 4000);
 
-      case 4:
-        const chosenIndex = parseInt(userText) - 1;
-        const chosenTariff = state.tariffs?.[chosenIndex];
-        if (chosenTariff) {
-          state.tariff = chosenTariff;
-          reply = `Awesome, you’ve selected: ${chosenTariff.name}.\nTo complete your switch, please follow this link to set up your Direct Debit: https://www.fuseenergy.com/direct-debit`;  
-          state.step++;
-        } else {
-          reply = "Please enter a valid number from the list of tariffs above.";
-        }
-        break;
+    } else if (state === 'ask_supply') {
+      userData[from].address = userText;
+      userState[from] = 'ask_ssd';
+    } else if (state === 'ask_ssd') {
+      userData[from].ssd = userText;
+      userState[from] = 'ask_tariff';
 
-      default:
-        reply = "This bot is only for onboarding! If you have questions, please chat with us via our website: https://www.fuseenergy.com 🌐";
-        break;
+      await sendWhatsAppMessage(from, `Got it! Based on your postcode, here are our current tariffs:`);
+      // Placeholder: insert real tariff menu from Fuse Energy site later
+      await sendWhatsAppMessage(from, `1. Simple Variable\n2. Green Fixed\n3. EV Saver\n\nPlease reply with the number of your preferred tariff.`);
+
+    } else if (state === 'ask_tariff') {
+      userData[from].tariff = userText;
+      userState[from] = 'done';
+
+      await sendWhatsAppMessage(from, `Awesome! 🎉 One last step — please follow this link to set up your Direct Debit: https://fuse.energy/direct-debit`);
+      await sendWhatsAppMessage(from, `PS: I’m just a bot 🤖 here to onboard you. If you have questions, speak to a human on our website: https://fuse.energy 💬`);
     }
-
-    await sendWhatsAppMessage(from, reply);
   }
 
   res.sendStatus(200);
 });
 
-// Verification endpoint
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -109,37 +113,3 @@ app.get('/webhook', (req, res) => {
 app.listen(10000, () => {
   console.log('🚀 Fusebot webhook running on port 10000');
 });
-
-// Helper: send message
-async function sendWhatsAppMessage(to, body) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-    {
-      messaging_product: 'whatsapp',
-      to,
-      text: { body }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-}
-
-// Helper: dummy postcode extractor
-function extractPostcode(text) {
-  const match = text.match(/([A-Z]{1,2}\d{1,2}[A-Z]?) ?(\d[A-Z]{2})/i);
-  return match ? match[0].toUpperCase() : 'SW1A 1AA';
-}
-
-// Helper: dummy Fuse tariff API (simulate fetch)
-async function getTariffsFromFuse(postcode) {
-  // Replace this with real fetch from Fuse site or backend
-  return [
-    { name: 'Green Variable', rate: '29.5p/kWh' },
-    { name: 'Fix & Go 12M', rate: '28.8p/kWh' },
-    { name: 'Flexible Tracker', rate: '27.9p/kWh' }
-  ];
-}
