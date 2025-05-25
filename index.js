@@ -10,7 +10,9 @@ app.use(bodyParser.json());
 
 const token = process.env.WHATSAPP_TOKEN;
 const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const verifyToken = process.env.VERIFY_TOKEN;  // ✅ Use this instead of META_VERIFY_TOKEN
 
+// Webhook endpoint to receive messages from WhatsApp
 app.post('/webhook', async (req, res) => {
   const entry = req.body.entry?.[0];
   const changes = entry?.changes?.[0];
@@ -28,28 +30,31 @@ app.post('/webhook', async (req, res) => {
       reply = "Perfect. Lastly, please follow this link to set up your Direct Debit: [Insert OpenBanking link].";
     }
 
-    await axios.post(
-      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to: from,
-        text: { body: reply }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    try {
+      await axios.post(
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: from,
+          text: { body: reply }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
-      }
-    );
+      );
+    } catch (error) {
+      console.error("❌ Error sending message:", error.response?.data || error.message);
+    }
   }
 
   res.sendStatus(200);
 });
 
-// Meta webhook verification
+// Webhook verification with Meta
 app.get('/webhook', (req, res) => {
-  const verifyToken = process.env.META_VERIFY_TOKEN;
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
