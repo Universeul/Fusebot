@@ -39,6 +39,9 @@ app.post('/webhook', async (req, res) => {
     const userText = message.text?.body?.trim();
     const state = userState.get(from) || { step: 'intro' };
 
+    console.log(`🔔 Incoming message from ${from}: "${userText}"`);
+    console.log(`📦 Current user state:`, state);
+
     if (state.step === 'intro') {
       await sendMessage(from, `Hi! I’m Fusebot — Fuse Energy’s official WhatsApp onboarding assistant 💡🔌\nI’ll guide you step by step to get your switch started. This will only take a minute!\n\nTo begin, what’s your email address?`);
       userState.set(from, { step: 'email' });
@@ -53,13 +56,28 @@ app.post('/webhook', async (req, res) => {
       userState.set(from, { ...state, step: 'ssd' });
     } else if (state.step === 'ssd') {
       state.ssd = userText;
-      await sendMessage(from, `Almost there! Please select your tariff from the options below:\n\n- Variable Import\n- Fixed Saver\n- Super Green Fixed`);
+      await sendMessage(from, `Almost there! Please select your tariff from the options below:\n\n` +
+        `1️⃣ Single Rate Variable\n£0.2489/kWh · 43.49p/day · Ideal for average use homes ⚡️\n\n` +
+        `2️⃣ Off-Peak Variable\nPeak: £0.3161 · Off-Peak: £0.1379 · Great for EVs and night use 🌙\nPeak: 8:30am–1:30am · Off-Peak: 1:30am–8:30am\n\n` +
+        `3️⃣ 12M Fixed Single Rate\n£0.2195/kWh · 41.95p/day · £50 exit fee · Locked for 12 months 🔒\n\n` +
+        `4️⃣ 18M Fixed Single Rate\n£0.2167/kWh · 37.51p/day · £50 exit fee · Locked for 18 months 🔒\n\n` +
+        `5️⃣ 12M Fixed Off-Peak\nPeak: £0.2841 · Off-Peak: £0.1357 · £50 exit fee · Fixed 12m 🌙\n\n` +
+        `6️⃣ 18M Fixed Off-Peak\nPeak: £0.2796 · Off-Peak: £0.1314 · £50 exit fee · Fixed 18m 🌙\n\n` +
+        `7️⃣ Smart EV\nSmart: £0.0500 · Base: £0.2678 · Best for EV savings 🚗\nSmart hours: 5 hrs between 9pm–7am`);
       userState.set(from, { ...state, step: 'tariff' });
     } else if (state.step === 'tariff') {
       state.tariff = userText;
       await sendMessage(from, `Perfect. Please follow this link to set up your Direct Debit:\nhttps://fuseenergy.com/direct-debit-setup`);
       await sendMessage(from, `⚠️ Just a heads up: I'm just an onboarding bot! For any specific queries, please chat with our team here: https://www.fuseenergy.com/`);
       userState.set(from, { ...state, step: 'done' });
+
+      console.log(`✅ Final collected onboarding data for ${from}:`);
+      console.log({
+        email: state.email,
+        supply: state.supply,
+        ssd: state.ssd,
+        tariff: state.tariff,
+      });
     }
   }
 
@@ -81,3 +99,4 @@ app.get('/webhook', (req, res) => {
 app.listen(10000, () => {
   console.log('🚀 Fusebot webhook running on port 10000');
 });
+
