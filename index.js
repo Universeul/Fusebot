@@ -15,20 +15,25 @@ const verifyToken = process.env.VERIFY_TOKEN;
 const userState = new Map();
 
 const sendMessage = async (to, text) => {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-    {
-      messaging_product: 'whatsapp',
-      to,
-      text: { body: text },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to,
+        text: { body: text },
       },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    console.log(`✅ Message sent to ${to}`);
+  } catch (error) {
+    console.error(`❌ Failed to send message to ${to}:`, error.response?.data || error.message);
+  }
 };
 
 app.post('/webhook', async (req, res) => {
@@ -36,29 +41,29 @@ app.post('/webhook', async (req, res) => {
 
   if (message) {
     const from = message.from;
-    const msgType = message.type;
-    const userText = message.text?.body?.trim();
     const state = userState.get(from) || { step: 'intro' };
 
     console.log(`🔔 Incoming message from ${from}:`, message);
     console.log(`📦 Current user state:`, state);
 
-    // Handle contact-based referrals
+    // 💬 CONTACT REFERRAL HANDLING
     if (message.type === 'contacts' && message.contacts?.[0]) {
       const contact = message.contacts[0];
       const contactName = contact.name?.formatted_name || contact.name?.first_name || 'your friend';
       const contactNumberRaw = contact.phones?.[0]?.phone_number || contact.phones?.[0]?.wa_id;
 
       if (!contactNumberRaw) {
-        await sendMessage(from, `Hmm, I couldn’t find a number in the contact you sent. Try again?`);
+        await sendMessage(from, `⚠️ Hmm, I couldn’t find a number in the contact you sent. Try again?`);
         return res.sendStatus(200);
       }
 
-      const contactNumber = contactNumberRaw.replace(/[^\d]/g, ''); // clean non-digit characters
+      const contactNumber = contactNumberRaw.replace(/[^\d]/g, '');
+
+      console.log(`📲 Attempting referral to: ${contactName} at ${contactNumber}`);
 
       try {
         await sendMessage(contactNumber, 
-          `👋 Hey ${contactName}! Your friend just referred you to Fuse Energy.\n\nSwitching to Fuse is easy — cheap, 100% green, and fully app-based ⚡\nLet’s get you onboarded! Just reply “Hi” to begin.`
+          `👋 Hey ${contactName}! Your friend just referred you to Fuse Energy.\n\nSwitching to Fuse is easy — cheap, 100% green, and fully app-based ⚡\nReply “Hi” to get started!`
         );
         await sendMessage(from, `✅ I've reached out to ${contactName} and invited them to join Fuse Energy!`);
       } catch (err) {
@@ -66,11 +71,12 @@ app.post('/webhook', async (req, res) => {
         await sendMessage(from, `⚠️ Sorry, I couldn’t message your friend. Make sure their number is on WhatsApp.`);
       }
 
-      return res.sendStatus(200); // return early to avoid triggering other logic
+      return res.sendStatus(200);
     }
 
+    // 💬 ONBOARDING LOGIC
+    const userText = message.text?.body?.trim();
 
-    // Regular onboarding flow
     if (state.step === 'intro') {
       await sendMessage(from, `Hi! I’m Fusebot — Fuse Energy’s official WhatsApp onboarding assistant 💡🔌\nI’ll guide you step by step to get your switch started. This will only take a minute!\n\nTo begin, what’s your email address?`);
       userState.set(from, { step: 'email' });
