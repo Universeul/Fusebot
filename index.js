@@ -36,12 +36,29 @@ app.post('/webhook', async (req, res) => {
 
   if (message) {
     const from = message.from;
+    const msgType = message.type;
     const userText = message.text?.body?.trim();
     const state = userState.get(from) || { step: 'intro' };
 
-    console.log(`🔔 Incoming message from ${from}: "${userText}"`);
+    console.log(`🔔 Incoming message from ${from}:`, message);
     console.log(`📦 Current user state:`, state);
 
+    // Handle contact-based referrals
+    if (msgType === 'contacts' && message.contacts?.length > 0) {
+      const contact = message.contacts[0];
+      const contactName = contact.name?.formatted_name || 'there';
+      const contactNumber = contact.phones?.[0]?.wa_id || contact.phones?.[0]?.phone;
+
+      if (contactNumber) {
+        await sendMessage(contactNumber, `👋 Hi ${contactName}! Your friend invited you to try Fuse Energy. Join us for green energy, low prices, and a top-rated app experience! Start your switch at https://fuseenergy.com/switch`);
+        await sendMessage(from, `✅ Thanks! We've reached out to ${contactName}. If they switch, you'll both benefit 💸`);
+      } else {
+        await sendMessage(from, `⚠️ Sorry, we couldn’t get that contact’s WhatsApp number. Please try again.`);
+      }
+      return res.sendStatus(200);
+    }
+
+    // Regular onboarding flow
     if (state.step === 'intro') {
       await sendMessage(from, `Hi! I’m Fusebot — Fuse Energy’s official WhatsApp onboarding assistant 💡🔌\nI’ll guide you step by step to get your switch started. This will only take a minute!\n\nTo begin, what’s your email address?`);
       userState.set(from, { step: 'email' });
@@ -99,4 +116,3 @@ app.get('/webhook', (req, res) => {
 app.listen(10000, () => {
   console.log('🚀 Fusebot webhook running on port 10000');
 });
-
