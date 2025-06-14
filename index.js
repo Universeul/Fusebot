@@ -44,19 +44,31 @@ app.post('/webhook', async (req, res) => {
     console.log(`📦 Current user state:`, state);
 
     // Handle contact-based referrals
-    if (msgType === 'contacts' && message.contacts?.length > 0) {
+    if (message.type === 'contacts' && message.contacts?.[0]) {
       const contact = message.contacts[0];
-      const contactName = contact.name?.formatted_name || 'there';
-      const contactNumber = contact.phones?.[0]?.wa_id || contact.phones?.[0]?.phone;
+      const contactName = contact.name?.formatted_name || contact.name?.first_name || 'your friend';
+      const contactNumberRaw = contact.phones?.[0]?.phone_number || contact.phones?.[0]?.wa_id;
 
-      if (contactNumber) {
-        await sendMessage(contactNumber, `👋 Hi ${contactName}! Your friend invited you to try Fuse Energy. Join us for green energy, low prices, and a top-rated app experience! Start your switch at https://fuseenergy.com/switch`);
-        await sendMessage(from, `✅ Thanks! We've reached out to ${contactName}. If they switch, you'll both benefit 💸`);
-      } else {
-        await sendMessage(from, `⚠️ Sorry, we couldn’t get that contact’s WhatsApp number. Please try again.`);
+      if (!contactNumberRaw) {
+        await sendMessage(from, `Hmm, I couldn’t find a number in the contact you sent. Try again?`);
+        return res.sendStatus(200);
       }
-      return res.sendStatus(200);
+
+      const contactNumber = contactNumberRaw.replace(/[^\d]/g, ''); // clean non-digit characters
+
+      try {
+        await sendMessage(contactNumber, 
+          `👋 Hey ${contactName}! Your friend just referred you to Fuse Energy.\n\nSwitching to Fuse is easy — cheap, 100% green, and fully app-based ⚡\nLet’s get you onboarded! Just reply “Hi” to begin.`
+        );
+        await sendMessage(from, `✅ I've reached out to ${contactName} and invited them to join Fuse Energy!`);
+      } catch (err) {
+        console.error(`❌ Failed to message referred contact:`, err?.response?.data || err.message);
+        await sendMessage(from, `⚠️ Sorry, I couldn’t message your friend. Make sure their number is on WhatsApp.`);
+      }
+
+      return res.sendStatus(200); // return early to avoid triggering other logic
     }
+
 
     // Regular onboarding flow
     if (state.step === 'intro') {
